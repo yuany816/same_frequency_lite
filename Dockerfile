@@ -2,8 +2,11 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
+ENV NODE_ENV=development
+
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
+RUN npm ci --legacy-peer-deps --include=dev --no-audit --no-fund \
+  && test -x node_modules/.bin/taro
 
 COPY . .
 RUN npm run build:weapp
