@@ -1,0 +1,68 @@
+import React, { useEffect } from 'react';
+import { useDidShow, useDidHide } from '@tarojs/taro';
+import Taro from '@tarojs/taro';
+import { callFunction } from './services/cloud';
+import { loadRemoteState, saveRemoteState } from './services/persistence';
+import { serializeAppState, useAppStore } from './store/useAppStore';
+// 全局样式
+import './app.scss';
+import { CLOUD_ENV_ID } from './config/cloud';
+
+function App(props) {
+  // 可以使用所有的 React Hooks
+  useEffect(() => {
+    if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
+      if (CLOUD_ENV_ID) Taro.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
+      Taro.showLoading({ title: '微信登录中' });
+      let ready = false;
+      const unsubscribe = useAppStore.subscribe((state) => {
+        if (ready) saveRemoteState(serializeAppState(state)).catch((error) => console.warn('[syncCoupleState]', error));
+      });
+      Taro.login()
+        .then(({ code }) => callFunction<{
+          relationshipId?: string
+          nickname?: string
+          avatarUrl?: string
+          role?: '男方' | '女方' | null
+          authorized?: boolean
+        }>('login', { code }))
+        .then((loginResult) => {
+          const profile: Record<string, any> = {
+            relationshipId: loginResult.relationshipId || '',
+            authorized: Boolean(loginResult.authorized)
+          }
+          if (loginResult.nickname) profile.nickname = loginResult.nickname
+          if (loginResult.avatarUrl) profile.avatarUrl = loginResult.avatarUrl
+          if (loginResult.role) profile.role = loginResult.role
+          useAppStore.getState().hydrate(profile)
+          return loadRemoteState(loginResult.relationshipId)
+        })
+        .then((snapshot) => {
+          if (snapshot) useAppStore.getState().hydrate(snapshot);
+          ready = true;
+          Taro.hideLoading();
+        })
+        .catch((error) => {
+          console.warn('[loadCoupleState]', error);
+          ready = true;
+          Taro.hideLoading();
+          Taro.showModal({
+            title: '微信登录失败',
+            content: '请确认当前体验版使用最新代码，并检查 CloudBase 云函数是否已部署。',
+            showCancel: false
+          });
+        });
+      return unsubscribe;
+    }
+  }, []);
+
+  // 对应 onShow
+  useDidShow(() => {});
+
+  // 对应 onHide
+  useDidHide(() => {});
+
+  return props.children;
+}
+
+export default App;
