@@ -5,6 +5,7 @@ WORKDIR /app
 ENV NODE_ENV=development
 
 RUN npm install --global npm@9.9.4 \
+  && npm config set registry https://registry.npmjs.org/ \
   && npm config set fund false \
   && npm config set audit false \
   && npm config set maxsockets 1 \
