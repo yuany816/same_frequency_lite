@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .auth/
+project.private.config.json
 .pai/
 .swc/
 .DS_Store

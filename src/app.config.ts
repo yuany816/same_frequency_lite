@@ -26,9 +26,9 @@ export default defineAppConfig({
     backgroundColor: '#ffffff',
     borderStyle: 'white',
     list: [
-      { pagePath: 'pages/index/index', text: '情侣', iconPath: 'assets/tabbar/home.svg', selectedIconPath: 'assets/tabbar/home-selected.svg' },
-      { pagePath: 'pages/heat/index', text: '情侣热度', iconPath: 'assets/tabbar/menu.svg', selectedIconPath: 'assets/tabbar/menu-selected.svg' },
-      { pagePath: 'pages/profile/index', text: '我的', iconPath: 'assets/tabbar/profile.svg', selectedIconPath: 'assets/tabbar/profile-selected.svg' }
+      { pagePath: 'pages/index/index', text: '情侣', iconPath: 'assets/tabbar/home.png', selectedIconPath: 'assets/tabbar/home-selected.png' },
+      { pagePath: 'pages/heat/index', text: '情侣热度', iconPath: 'assets/tabbar/menu.png', selectedIconPath: 'assets/tabbar/menu-selected.png' },
+      { pagePath: 'pages/profile/index', text: '我的', iconPath: 'assets/tabbar/profile.png', selectedIconPath: 'assets/tabbar/profile-selected.png' }
     ]
   }
 })

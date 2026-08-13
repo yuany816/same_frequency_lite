@@ -55,22 +55,78 @@
 ### 5.1 初始化：登录、身份确认与状态分流
 
 1. 用户进入小程序，完成微信身份识别。
-2. 系统查询用户初始化状态：是否已确认角色、是否存在有效情侣关系。
-3. 未确认角色：进入“身份确认页”，只能选择男方或女方，确认后写入用户档案。
-4. 已确认角色但未建联：进入“情侣绑定引导页”，展示绑定说明和“发起绑定”“输入邀请码”两个入口。
-5. 已发起但未完成绑定：进入“等待对方确认页”，展示邀请码、有效期和取消绑定入口。
-6. 已存在有效关系：直接进入“情侣首页”。
-7. 角色确认后默认不可自行修改；如需修改，必须解除关系并二次确认，MVP 可暂不开放修改。
+2. 系统查询用户初始化状态：是否已确认资料授权、是否已确认角色、是否存在有效情侣关系。
+3. 用户进入情侣首页后，如果尚未完成头像昵称授权，首页底部展示授权弹窗/底部授权卡片。
+4. 用户点击“同意并授权”后，才触发微信官方头像和昵称获取能力；未经用户点击确认，不得调用或展示获取头像昵称的操作。
+5. 授权成功后，系统将微信头像和昵称自动填充到当前页面，并写入用户档案和授权记录。
+6. 未确认角色：进入“身份确认页”，只能选择男方或女方，确认后写入用户档案。
+7. 已确认角色但未建联：进入“情侣绑定引导页”，展示绑定说明和“发起绑定”“输入邀请码”两个入口。
+8. 已发起但未完成绑定：进入“等待对方确认页”，展示邀请码、有效期和取消绑定入口。
+9. 已存在有效关系：进入“情侣首页”；若头像昵称授权未完成，首页仍可展示，但底部授权卡片持续提示。
+10. 角色确认后默认不可自行修改；如需修改，必须解除关系并二次确认，MVP 可暂不开放修改。
 
 初始化状态机：
 
-`未登录` → `待确认身份` → `待建立关系` → `等待对方确认` → `已建立关系`
+`未登录` → `待授权资料` → `待确认身份` → `待建立关系` → `等待对方确认` → `已建立关系`
 
 页面守卫：
 
-- 未确认身份时，不允许进入绑定、首页和任何业务模块。
+- 微信登录态只用于识别用户，不等同于头像昵称授权完成。
+- 未完成头像昵称授权时，不得自动读取或填充微信头像昵称；可以进入首页，但必须展示授权提示。
+- 未确认身份时，不允许进入绑定和核心业务模块；允许用户先完成资料授权。
 - 未建立关系时，不允许进入情侣首页和【给我做饭】内部页面。
 - 绑定成功后，后续所有业务请求必须携带并校验 `relationshipId`。
+
+### 5.1.1 首页资料授权弹窗
+
+#### 触发条件
+
+满足以下任一条件时，首页底部展示授权弹窗：
+
+- 当前用户已完成微信登录，但 `users.authorized` 为 `false`。
+- 用户头像为空或昵称为空。
+- 最近一次授权状态为 `declined`，但用户再次进入首页。
+- 用户主动清除或撤销本地授权状态后重新进入首页。
+
+已完成授权且头像、昵称均存在时，不展示弹窗，仅在“我的/个人信息”中提供修改入口。
+
+#### 展示位置与内容
+
+- 弹窗采用底部抽屉或页面底部固定卡片，不遮挡顶部关系信息。
+- 弹窗首次出现时可带半透明遮罩；用户点击“稍后再说”后收起，不阻塞首页其他功能。
+- 弹窗标题：`完善你的情侣资料`
+- 说明文案：`头像和昵称仅用于你们的情侣资料展示。点击同意后，将使用微信官方能力选择头像并填写昵称。`
+- 辅助文案：`我们不会在未经你确认的情况下获取或公开其他微信信息。`
+- 主按钮：`同意并授权`
+- 次按钮：`稍后再说`
+- 弹窗不得使用“登录授权”作为唯一文案，避免将微信登录和资料授权混淆。
+
+#### 授权流程
+
+1. 用户点击“同意并授权”。
+2. 前端先创建或更新一条授权记录，状态为 `prompted`，记录弹窗展示和用户确认时间。
+3. 页面展示微信官方头像选择组件 `button open-type="chooseAvatar"`。
+4. 页面使用 `input type="nickname"` 获取微信昵称；不得通过 `Taro.login()` 返回值或旧版 `getUserProfile` 假设获取昵称头像。
+5. 用户完成头像选择和昵称填写后，前端预览头像、昵称，并提供“保存资料”按钮。
+6. 用户点击保存后调用 `updateUserProfile` 云函数，服务端使用当前登录用户 `_openid` 写入 `users`。
+7. 服务端将授权记录更新为 `authorized`，写入授权完成时间、头像地址、昵称摘要和授权来源。
+8. 成功后关闭弹窗，首页立即使用最新头像和昵称刷新，不需要重新登录。
+
+#### 拒绝、中断和失败
+
+- 用户点击“稍后再说”：授权记录写入 `declined`，首页保留默认头像和“去授权”入口。
+- 用户未选择头像或未填写昵称：不允许标记为授权完成，提示“请完成头像和昵称设置”。
+- 微信组件取消或返回失败：记录 `cancelled` 或 `failed`，允许再次点击授权。
+- 云函数保存失败：本次授权结果不得标记为最终成功；页面提示“资料已获取，云端保存失败，请重试”，并保留重试入口。
+- 用户拒绝后不得循环弹出强制弹窗；同一会话最多自动展示一次，后续通过底部授权卡片和个人中心入口触达。
+- 授权拒绝不阻塞情侣首页浏览，但未完成资料授权前不允许将默认资料当作真实微信资料提交给建联或通知。
+
+#### 安全与隐私
+
+- 只保存头像 URL、昵称和授权状态，不保存微信登录 code、session_key 或未使用的微信用户信息。
+- 授权记录必须绑定 `_openid`，客户端不得传入其他用户 ID。
+- 授权记录用于审计和状态判断，不作为业务关系权限依据。
+- 用户更新头像昵称时生成新的授权记录，不覆盖历史授权审计记录。
 
 ### 5.2 建联绑定
 
@@ -198,6 +254,9 @@ MVP 首页内容：
 - 顶部为关系卡片，突出双方信息和当前关系状态。
 - 中部为功能模块卡片；MVP 只展示一个大模块【给我做饭】，卡片需包含模块图形、标题、描述和进入按钮。
 - 底部为最近动态或订单摘要，不抢占功能模块的主视觉。
+- 资料未授权时，页面最下方展示“完善你的情侣资料”授权卡片；授权卡片不得覆盖底部 TabBar。
+- 授权卡片主按钮必须由用户主动点击，不能在首页加载时自动弹出微信头像/昵称组件。
+- 授权成功后，头像和昵称在顶部关系卡片、个人中心和后续邀请页面中即时更新。
 - 无关系时不得渲染首页内容，必须被页面守卫重定向到初始化流程。
 
 #### 给我做饭模块
@@ -236,49 +295,89 @@ MVP 首页内容：
 
 ### 8.1 `users`
 
-`_openid`, `nickname`, `avatar`, `genderRole`, `onboardingStatus`, `pendingInviteId`, `status`, `createTime`, `updateTime`
+`_openid`, `nickname`, `avatarUrl`, `genderRole`, `onboardingStatus`, `authorized`, `authorizedAt`, `pendingInviteId`, `status`, `createTime`, `updateTime`
 
 `onboardingStatus` 枚举：`pending_role`、`pending_relationship`、`waiting_confirmation`、`completed`
 
-### 8.2 `relationships`
+字段约束：
+
+- `_openid`：微信用户唯一标识，由云函数从调用上下文获取，禁止客户端传入。
+- `nickname`：微信昵称或用户主动修改后的昵称，最多 20 个字符。
+- `avatarUrl`：微信头像或用户选择的头像地址。
+- `authorized`：是否完成本产品资料授权并成功保存头像昵称。
+- `authorizedAt`：最近一次授权完成时间；未完成授权时为空。
+- `genderRole`：`男方` 或 `女方`，与资料授权独立。
+
+### 8.2 `user_authorizations`
+
+用户资料授权审计表，用于记录首页授权弹窗和微信官方头像昵称能力的处理结果。
+
+`_id`, `_openid`, `action`, `status`, `source`, `avatarUrl`, `nicknameHash`, `promptedAt`, `confirmedAt`, `completedAt`, `errorCode`, `createTime`
+
+字段说明：
+
+| 字段 | 说明 |
+|---|---|
+| `_id` | 授权记录 ID |
+| `_openid` | 当前微信用户 OpenID |
+| `action` | `profile_authorization` |
+| `status` | `prompted`、`confirmed`、`authorized`、`declined`、`cancelled`、`failed` |
+| `source` | `home_bottom_sheet`、`profile_page`、`invite_page` |
+| `avatarUrl` | 授权成功时保存的头像地址，可为空 |
+| `nicknameHash` | 昵称摘要，仅用于审计比对，不保存不必要的原始副本 |
+| `promptedAt` | 弹窗展示时间 |
+| `confirmedAt` | 用户点击同意时间 |
+| `completedAt` | 头像昵称成功写入用户表的时间 |
+| `errorCode` | 失败或取消原因 |
+| `createTime` | 记录创建时间 |
+
+索引：
+
+```text
+_openid
+_openid + createTime
+_openid + status
+```
+
+### 8.3 `relationships`
 
 `_id`, `memberOpenids`, `memberRoles`, `status`, `inviteCodeHash`, `inviteExpireTime`, `createTime`, `dissolveTime`
 
 索引：`memberOpenids`, `status`
 
-### 8.3 `menus`
+### 8.4 `menus`
 
 `_id`, `relationshipId`, `ownerOpenid`, `name`, `description`, `coverUrl`, `status`, `publishedAt`, `createTime`, `updateTime`
 
 索引：`relationshipId`, `ownerOpenid`, `status`
 
-### 8.4 `menu_categories`
+### 8.5 `menu_categories`
 
 `_id`, `menuId`, `name`, `sort`, `status`, `createTime`
 
-### 8.5 `dishes`
+### 8.6 `dishes`
 
 `_id`, `menuId`, `categoryId`, `name`, `imageUrls`, `description`, `specification`, `prepMinutes`, `tipSuggestedAmount`, `status`, `sort`, `createTime`, `updateTime`
 
 索引：`menuId`, `categoryId`, `status`
 
-### 8.6 `orders`
+### 8.7 `orders`
 
 `_id`, `relationshipId`, `buyerOpenid`, `sellerOpenid`, `menuId`, `status`, `itemsSnapshot`, `buyerRemark`, `tipAmount`, `tipStatus`, `totalDishCount`, `createdAt`, `updatedAt`, `completedAt`
 
 索引：`relationshipId`, `buyerOpenid`, `sellerOpenid`, `status`, `createdAt`
 
-### 8.7 `order_status_logs`
+### 8.8 `order_status_logs`
 
 `_id`, `orderId`, `fromStatus`, `toStatus`, `operatorOpenid`, `remark`, `createTime`
 
-### 8.8 `tips`
+### 8.9 `tips`
 
 `_id`, `relationshipId`, `orderId`, `payerOpenid`, `receiverOpenid`, `amount`, `status`, `transactionId`, `paidAt`, `createTime`
 
 唯一约束建议：`orderId + payerOpenid`
 
-### 8.9 `couple_states`
+### 8.10 `couple_states`
 
 用于 MVP 阶段保存当前用户可访问的情侣业务快照，服务端通过 `_openid` 识别用户并限制读取范围。后续数据规模扩大后，可将快照拆分为前述标准业务集合。
 
@@ -286,7 +385,7 @@ MVP 首页内容：
 
 索引：`_openid`
 
-### 8.10 `relationships`
+### 8.11 `relationships`
 
 情侣关系主表，所有菜单、订单、纪念日、查岗和热度数据必须通过 `relationshipId` 归属到该表，不允许按用户各自保存完整业务快照。
 
@@ -294,7 +393,7 @@ MVP 首页内容：
 
 索引：`memberOpenids`, `status`
 
-### 8.11 `relationship_invites`
+### 8.12 `relationship_invites`
 
 微信分享建联邀请，使用一次性 token，服务端校验状态、有效期、邀请方和角色冲突。
 
@@ -307,6 +406,9 @@ MVP 首页内容：
 | 函数 | 用途 |
 |---|---|
 | `login` | 获取用户身份、读取初始化状态并返回首页分流结果 |
+| `getProfileAuthorizationStatus` | 查询当前用户头像昵称资料授权状态 |
+| `recordProfileAuthorization` | 记录首页授权弹窗确认、拒绝、取消和失败结果 |
+| `updateUserProfile` | 保存微信头像昵称，并将授权记录更新为成功 |
 | `confirmRole` | 保存男方/女方角色 |
 | `createRelationshipInvite` | 创建一次性建联口令 |
 | `joinRelationship` | 校验口令并建立关系 |
@@ -334,6 +436,9 @@ MVP 首页内容：
 ### 9.1 云端存储策略
 
 - 微信小程序启动时调用 `login` 获取并初始化用户记录。
+- 启动和进入首页时只查询资料授权状态，不主动调用头像昵称获取能力。
+- 用户点击首页“同意并授权”后，前端使用微信官方 `chooseAvatar` 和 `nickname` 能力获取资料。
+- `updateUserProfile` 必须在服务端同时更新 `users` 和 `user_authorizations`，两者成功后才返回授权完成。
 - 微信环境优先从 `couple_states` 恢复状态；页面和业务操作产生的状态变更自动同步。
 - H5、抖音和支付宝预览使用 mock 数据，不访问云端。
 - 云函数部署前需要配置真实 CloudBase 环境 ID；当前代码使用空环境占位。
@@ -364,6 +469,8 @@ MVP 首页内容：
 - 订单状态变更、支付回调、关系建立必须具备服务端日志。
 - 敏感数据最小化存储；邀请口令不得明文持久化。
 - 数据库默认仅关系成员可读写，菜单只能由创建者修改。
+- 用户授权记录仅允许本人和服务端读取，其他情侣成员不能查看授权审计详情。
+- 头像昵称授权必须遵循“用户明确确认后获取”的顺序，不得静默获取或使用默认资料冒充授权结果。
 - 所有金额使用整数分存储，禁止使用浮点数参与结算。
 - 关键接口需要幂等和并发控制，尤其是建联、下单、状态更新、支付回调。
 
@@ -378,7 +485,18 @@ MVP 首页内容：
 - 相同角色、过期口令、重复建联均被阻止并显示明确原因。
 - 未建联用户不能进入情侣首页、【给我做饭】、点菜、订单和菜单管理核心页面。
 
-### 12.2 菜单与点菜
+### 12.2 微信头像昵称授权
+
+- 微信登录完成后，系统不得自动将微信登录视为头像昵称授权完成。
+- 用户进入情侣首页且资料未授权时，页面底部必须展示授权文案和“同意并授权”按钮。
+- 用户未点击“同意并授权”前，不得触发 `chooseAvatar` 或昵称填写流程。
+- 用户点击授权后，必须能使用微信官方头像组件和 `input type="nickname"` 完成资料填写。
+- 保存成功后，头像和昵称必须自动填充到首页关系卡片、个人中心和后续邀请页面。
+- 授权成功必须同时写入 `users.authorized`、`users.authorizedAt` 和 `user_authorizations` 记录。
+- 用户点击“稍后再说”、取消官方组件或云端保存失败时，必须记录对应状态，且允许后续重试。
+- 拒绝授权不能阻塞首页浏览，但不得将默认头像昵称标记为真实微信授权资料。
+
+### 12.3 菜单与点菜
 
 - 情侣首页默认不展示菜品列表，点击【给我做饭】后才进入菜单相关功能。
 - 【给我做饭】模块首页必须同时提供“点菜给 TA”和“为 TA 做菜单”两个入口。
@@ -387,14 +505,14 @@ MVP 首页内容：
 - 点菜页具备左侧分类、右侧菜品列表、菜品详情、购物车和备注。
 - 菜品下架或菜单变更后，下单提交会重新校验并给出提示。
 
-### 12.3 订单
+### 12.4 订单
 
 - 下单成功后，双方均能在各自订单列表看到正确的订单。
 - 订单状态只能按规定顺序变更，非法状态跳转被拒绝。
 - 下单方可以在验收阶段通过或退回制作。
 - 订单详情展示状态时间线和每次操作记录。
 
-### 12.4 打赏
+### 12.5 打赏
 
 - 用户可在验收阶段发起打赏。
 - 支付成功后订单和打赏记录关联正确，失败可重试且不重复扣款。
@@ -415,7 +533,7 @@ MVP 首页内容：
 
 ### P0
 
-- 微信登录、初始化状态分流、角色确认、邀请口令建联
+- 微信登录、资料授权弹窗、官方头像昵称获取、初始化状态分流、角色确认、邀请口令建联
 - 绑定成功页、情侣首页、【给我做饭】模块首页
 - 菜单/分类/菜品创建与发布
 - 对方点菜、购物车、下单

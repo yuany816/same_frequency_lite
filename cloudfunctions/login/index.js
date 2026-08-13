@@ -14,6 +14,8 @@ exports.main = async (event) => {
           nickname: '',
           avatarUrl: '',
           genderRole: null,
+          authorized: false,
+          authorizedAt: null,
           createTime: db.serverDate(),
           updateTime: db.serverDate()
         }
@@ -30,7 +32,9 @@ exports.main = async (event) => {
         nickname: user.nickname || '',
         avatarUrl: user.avatarUrl || '',
         role: user.genderRole || null,
-        authorized: Boolean(user.nickname || user.avatarUrl)
+        authorized: typeof user.authorized === 'boolean'
+          ? user.authorized
+          : Boolean(user.nickname && user.avatarUrl)
       }
     }
   } catch (err) {

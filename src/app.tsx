@@ -1,31 +1,29 @@
 import React, { useEffect } from 'react';
 import { useDidShow, useDidHide } from '@tarojs/taro';
 import Taro from '@tarojs/taro';
-import { callFunction } from './services/cloud';
+import { callFunction, ensureCloudReady } from './services/cloud';
 import { loadRemoteState, saveRemoteState } from './services/persistence';
 import { serializeAppState, useAppStore } from './store/useAppStore';
 // 全局样式
 import './app.scss';
-import { CLOUD_ENV_ID } from './config/cloud';
 
 function App(props) {
   // 可以使用所有的 React Hooks
   useEffect(() => {
     if (Taro.getEnv() === Taro.ENV_TYPE.WEAPP) {
-      if (CLOUD_ENV_ID) Taro.cloud.init({ env: CLOUD_ENV_ID, traceUser: true });
       Taro.showLoading({ title: '微信登录中' });
       let ready = false;
       const unsubscribe = useAppStore.subscribe((state) => {
         if (ready) saveRemoteState(serializeAppState(state)).catch((error) => console.warn('[syncCoupleState]', error));
       });
-      Taro.login()
-        .then(({ code }) => callFunction<{
+      ensureCloudReady()
+        .then(() => callFunction<{
           relationshipId?: string
           nickname?: string
           avatarUrl?: string
           role?: '男方' | '女方' | null
           authorized?: boolean
-        }>('login', { code }))
+        }>('login'))
         .then((loginResult) => {
           const profile: Record<string, any> = {
             relationshipId: loginResult.relationshipId || '',
@@ -35,10 +33,21 @@ function App(props) {
           if (loginResult.avatarUrl) profile.avatarUrl = loginResult.avatarUrl
           if (loginResult.role) profile.role = loginResult.role
           useAppStore.getState().hydrate(profile)
-          return loadRemoteState(loginResult.relationshipId)
+          return loadRemoteState(loginResult.relationshipId).then((snapshot) => ({
+            snapshot,
+            profile
+          }))
         })
-        .then((snapshot) => {
-          if (snapshot) useAppStore.getState().hydrate(snapshot);
+        .then(({ snapshot, profile }) => {
+          if (snapshot) {
+            useAppStore.getState().hydrate({
+              ...snapshot,
+              // The user record is authoritative for profile authorization.
+              nickname: profile.nickname || snapshot.nickname,
+              avatarUrl: profile.avatarUrl || snapshot.avatarUrl,
+              authorized: profile.authorized || snapshot.authorized
+            })
+          }
           ready = true;
           Taro.hideLoading();
         })

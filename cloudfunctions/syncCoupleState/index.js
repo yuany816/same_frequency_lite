@@ -9,6 +9,9 @@ exports.main = async (event) => {
     const relationshipId = event && event.relationshipId
     if (!snapshot) throw new Error('snapshot is required')
     if (!relationshipId) throw new Error('relationshipId is required')
+    if (snapshot.relationshipId && snapshot.relationshipId !== relationshipId) {
+      throw new Error('关系数据不一致')
+    }
     const memberships = await db.collection('relationships').where({ _id: relationshipId, memberOpenids: openid, status: 'active' }).limit(1).get()
     if (!memberships.data.length) throw new Error('无权修改该情侣关系')
     const existing = await db.collection('couple_states').where({ relationshipId }).limit(1).get()

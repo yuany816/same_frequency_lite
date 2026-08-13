@@ -230,7 +230,15 @@ export const useAppStore = create<AppState>((set) => ({
   removeAnniversary: (id) => set((state) => ({ anniversaries: state.anniversaries.filter((item) => item.id !== id) })),
   increaseHeat: (amount) => set((state) => ({ heatScore: Math.min(100, Math.max(0, state.heatScore + amount)) })),
   dissolveRelationship: () => set({ linked: false, onboardingStatus: 'pending_relationship' }),
-  setProfile: ({ nickname, avatarUrl }) => set((state) => ({ nickname: nickname || state.nickname, avatarUrl: avatarUrl || state.avatarUrl, authorized: true }))
+  setProfile: ({ nickname, avatarUrl }) => set((state) => {
+    const nextNickname = nickname || state.nickname
+    const nextAvatarUrl = avatarUrl || state.avatarUrl
+    return {
+      nickname: nextNickname,
+      avatarUrl: nextAvatarUrl,
+      authorized: Boolean(nextNickname && nextAvatarUrl)
+    }
+  })
   ,
   requestCheckIn: () => set((state) => ({
     checkInRequest: {
