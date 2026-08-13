@@ -20,7 +20,7 @@ RUN npm ci --legacy-peer-deps --include=dev --no-audit --no-fund --prefer-offlin
 COPY . .
 RUN npm run build:weapp
 
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=80
+EXPOSE 80
 
 CMD ["node", "server.js"]
